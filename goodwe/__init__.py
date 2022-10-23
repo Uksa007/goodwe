@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Type
 
+from .sbp import SBP
 from .dt import DT
 from .es import ES
 from .et import ET
@@ -18,21 +19,23 @@ logger = logging.getLogger(__name__)
 ET_FAMILY = ["ET", "EH", "BT", "BH"]
 ES_FAMILY = ["ES", "EM", "BP"]
 DT_FAMILY = ["DT", "MS", "NS", "XS"]
+SBP_FAMILY = ["SBP"]
 
 # Serial number tags to identify inverter type
 ET_MODEL_TAGS = ["ETU", "EHU", "BTU", "BHU"]
 ES_MODEL_TAGS = ["ESU", "EMU", "BPU", "BPS"]
 DT_MODEL_TAGS = ["DTU", "MSU", "DTN", "DSN", "PSB", "PSC"]
+SBP_MODEL_TAGS = ["S-BP"]
 
 # supported inverter protocols
-_SUPPORTED_PROTOCOLS = [ET, DT, ES]
+_SUPPORTED_PROTOCOLS = [SBP, ET, DT, ES]
 
 
 async def connect(host: str, family: str = None, comm_addr: int = 0, timeout: int = 1, retries: int = 3) -> Inverter:
     """Contact the inverter at the specified host/port and answer appropriate Inverter instance.
 
     The specific inverter family/type will be detected automatically, but it can be passed explicitly.
-    Supported inverter family names are ET, EH, BT, BH, ES, EM, BP, DT, MS, D-NS and XS.
+    Supported inverter family names are SBP, ET, EH, BT, BH, ES, EM, BP, DT, MS, D-NS and XS.
 
     Inverter communication address may be explicitly passed, if not the usual default value
     will be used (0xf7 for ET/EH/BT/BH/ES/EM/BP inverters, 0x7f for DT/MS/D-NS/XS inverters).
@@ -48,6 +51,8 @@ async def connect(host: str, family: str = None, comm_addr: int = 0, timeout: in
         inv = ES(host, comm_addr, timeout, retries)
     elif family in DT_FAMILY:
         inv = DT(host, comm_addr, timeout, retries)
+    elif family in SBP_FAMILY:
+        inv = SBP(host, comm_addr, timeout, retries)
     else:
         return await discover(host, timeout, retries)
 
@@ -78,12 +83,17 @@ async def discover(host: str, timeout: int = 1, retries: int = 3) -> Inverter:
                 inverter_class = ET
         for model_tag in ES_MODEL_TAGS:
             if model_tag in serial_number:
-                logger.debug("Detected ES/EM/BP inverter %s, S/N:%s.", model_name, serial_number)
-                inverter_class = ES
+                if "S-BP" in model_name:
+                    logger.debug("Detected S-BP inverter %s, S/N:%s.", model_name, serial_number)
+                    inverter_class = SBP
+                else:    
+                    logger.debug("Detected ES/EM/BP inverter %s, S/N:%s.", model_name, serial_number)
+                    inverter_class = ES
         for model_tag in DT_MODEL_TAGS:
             if model_tag in serial_number:
                 logger.debug("Detected DT/MS/D-NS/XS inverter %s, S/N:%s.", model_name, serial_number)
                 inverter_class = DT
+
         if inverter_class:
             i = inverter_class(host, 0, timeout, retries)
             await i.read_device_info()
